@@ -1,6 +1,9 @@
+using AutoMapper;
+using CouponAPI;
 using CouponAPI.Data;
 using CouponAPI.Models;
 using CouponAPI.Models.DTO;
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddAutoMapper(typeof(MappingConfig));
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
 
 var app = builder.Build();
 
@@ -27,38 +34,29 @@ app.MapGet("/api/coupon", (ILogger<Program> _logger) =>
 }).WithName("GetCoupons")
   .Produces<IEnumerable<Coupon>>(200);
 
-app.MapGet("/api/coupon/{id:int}", (int id) =>
+app.MapGet("/api/coupon/{id:int}", (ILogger < Program > _logger,int id) =>
 {
+    _logger.Log(LogLevel.Information, "Getting a Coupon");
     return Results.Ok(CouponStore.CouponList.FirstOrDefault(x => x.Id == id));
 }).WithName("GetCoupon")
   .Produces<Coupon>(200);
 
-app.MapPost("/api/coupon", ([FromBody] CouponCreateDTO couponCreateDTO) =>
+app.MapPost("/api/coupon", async (IMapper _mapper, IValidator<CouponCreateDTO> _validation, [FromBody] CouponCreateDTO couponCreateDTO) =>
 {
-    if (string.IsNullOrEmpty(couponCreateDTO.Name))
-        return Results.BadRequest("Invalid Coupon Name");
+    var validationResult = await _validation.ValidateAsync(couponCreateDTO);
 
-    if (CouponStore.CouponList.Any(x => x.Name!.ToLower() == couponCreateDTO.Name.ToLower()))
+    if (!validationResult.IsValid)
+        return Results.BadRequest(validationResult.Errors.FirstOrDefault()!.ToString());
+
+    if (CouponStore.CouponList.Any(x => x.Name!.ToLower() == couponCreateDTO.Name!.ToLower()))
         return Results.BadRequest("Coupon Name already exists");
 
-    Coupon coupon = new()
-    {
-        Name = couponCreateDTO.Name,
-        Percent = couponCreateDTO.Percent,
-        IsActive = couponCreateDTO.IsActive,
-    };
+    Coupon coupon = _mapper.Map<Coupon>(couponCreateDTO);
 
     coupon.Id = CouponStore.CouponList.OrderByDescending(x => x.Id).FirstOrDefault()!.Id + 1;
     CouponStore.CouponList.Add(coupon);
 
-    CouponDTO couponDTO = new()
-    {
-        Id = coupon.Id,
-        Name = coupon.Name,
-        Percent = coupon.Percent,
-        IsActive = coupon.IsActive,
-        Created = coupon.Created,
-    };
+    CouponDTO couponDTO = _mapper.Map<CouponDTO>(coupon);
 
     //return Results.Ok(coupon);
     //return Results.Created($"/api/coupon/{coupon.Id}", coupon);
