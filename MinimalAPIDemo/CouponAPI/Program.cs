@@ -1,5 +1,6 @@
 using CouponAPI.Data;
 using CouponAPI.Models;
+using CouponAPI.Models.DTO;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,8 +20,9 @@ if (app.Environment.IsDevelopment())
 }
 
 //app.MapGet("/api/coupon", () => Results.Ok(CouponStore.CouponList)); 
-app.MapGet("/api/coupon", () =>
+app.MapGet("/api/coupon", (ILogger<Program> _logger) =>
 {
+    _logger.Log(LogLevel.Information, "Getting all Coupons");
     return Results.Ok(CouponStore.CouponList);
 }).WithName("GetCoupons")
   .Produces<IEnumerable<Coupon>>(200);
@@ -31,20 +33,36 @@ app.MapGet("/api/coupon/{id:int}", (int id) =>
 }).WithName("GetCoupon")
   .Produces<Coupon>(200);
 
-app.MapPost("/api/coupon", ([FromBody] Coupon coupon) =>
+app.MapPost("/api/coupon", ([FromBody] CouponCreateDTO couponCreateDTO) =>
 {
-    if (coupon.Id != 0 || string.IsNullOrEmpty(coupon.Name))
-        return Results.BadRequest("Invalid Id or Coupon Name");
+    if (string.IsNullOrEmpty(couponCreateDTO.Name))
+        return Results.BadRequest("Invalid Coupon Name");
 
-    if (CouponStore.CouponList.Any(x => x.Name.ToLower() == coupon.Name.ToLower()))
+    if (CouponStore.CouponList.Any(x => x.Name!.ToLower() == couponCreateDTO.Name.ToLower()))
         return Results.BadRequest("Coupon Name already exists");
 
-    coupon.Id = CouponStore.CouponList.OrderByDescending(x => x.Id).FirstOrDefault().Id + 1;
+    Coupon coupon = new()
+    {
+        Name = couponCreateDTO.Name,
+        Percent = couponCreateDTO.Percent,
+        IsActive = couponCreateDTO.IsActive,
+    };
+
+    coupon.Id = CouponStore.CouponList.OrderByDescending(x => x.Id).FirstOrDefault()!.Id + 1;
     CouponStore.CouponList.Add(coupon);
+
+    CouponDTO couponDTO = new()
+    {
+        Id = coupon.Id,
+        Name = coupon.Name,
+        Percent = coupon.Percent,
+        IsActive = coupon.IsActive,
+        Created = coupon.Created,
+    };
 
     //return Results.Ok(coupon);
     //return Results.Created($"/api/coupon/{coupon.Id}", coupon);
-    return Results.CreatedAtRoute("GetCoupon", new { id = coupon.Id }, coupon);
+    return Results.CreatedAtRoute("GetCoupon", new { id = coupon.Id }, couponDTO);
 
 }).WithName("CreateCoupon")
   .Accepts<Coupon>("application/json")
